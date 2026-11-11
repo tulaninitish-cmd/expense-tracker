@@ -23,7 +23,7 @@ Set `SECRET_KEY` as an environment variable before deploying.
 
 ## Run tests
 ```bash
-pytest -v
+python -m pytest -v
 ```
 
 ## API
