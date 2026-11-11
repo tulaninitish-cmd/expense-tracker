@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expense Tracker</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:20px;background:#f6f7f9;color:#1c1c1e}
+.card{background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:16px;margin-bottom:16px}
+input,button{font:inherit;padding:8px;border-radius:6px;border:1px solid #ccc}
+button{background:#3b6cf6;color:#fff;border:none;cursor:pointer}
+button.link{background:none;color:#d33;padding:0}
+form{display:flex;flex-wrap:wrap;gap:8px}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:6px;border-bottom:1px solid #eee}
+#msg{color:#d33;min-height:1.2em}
+.hid{display:none}
+</style>
+</head>
+<body>
+<h1>Expense Tracker</h1>
+<p id="msg"></p>
+
+<div id="authBox" class="card">
+  <form id="authForm">
+    <input id="u" placeholder="Username" required>
+    <input id="p" type="password" placeholder="Password (6+ chars)" required>
+    <button type="submit">Log in</button>
+    <button type="button" id="reg">Register</button>
+  </form>
+</div>
+
+<div id="app" class="hid">
+  <div class="card">
+    <form id="addForm">
+      <input id="amt" type="number" step="0.01" min="0.01" placeholder="Amount" required>
+      <input id="cat" placeholder="Category" required>
+      <input id="note" placeholder="Note (optional)">
+      <input id="date" type="date">
+      <button type="submit">Add</button>
+    </form>
+  </div>
+  <div class="card"><h3>Summary: <span id="total">0</span></h3><div id="sum"></div></div>
+  <div class="card">
+    <table><thead><tr><th>Date</th><th>Category</th><th>Note</th><th>Amount</th><th></th></tr></thead>
+    <tbody id="rows"></tbody></table>
+  </div>
+  <button id="out">Log out</button>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let token = localStorage.getItem("token");
+
+async function api(path, method = "GET", body) {
+  const res = await fetch("/api" + path, {
+    method,
+    headers: {"Content-Type": "application/json", ...(token ? {Authorization: "Bearer " + token} : {})},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (res.status === 204) return null;
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+const say = m => $("msg").textContent = m || "";
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function show() {
+  $("authBox").classList.toggle("hid", !!token);
+  $("app").classList.toggle("hid", !token);
+  if (token) load();
+}
+async function load() {
+  try {
+    const [rows, s] = await Promise.all([api("/expenses"), api("/summary")]);
+    $("rows").innerHTML = rows.map(r => `<tr><td>${esc(r.date)}</td><td>${esc(r.category)}</td><td>${esc(r.note)}</td>
+      <td>${r.amount.toFixed(2)}</td><td><button class="link" data-id="${r.id}">delete</button></td></tr>`).join("");
+    $("total").textContent = s.total.toFixed(2);
+    $("sum").innerHTML = s.by_category.map(c => `${esc(c.category)}: ${c.total.toFixed(2)} (${c.count})`).join(" &middot; ");
+  } catch (e) { token = null; localStorage.removeItem("token"); say(e.message); show(); }
+}
+$("authForm").onsubmit = async e => {
+  e.preventDefault(); say();
+  try {
+    const r = await api("/login", "POST", {username: $("u").value, password: $("p").value});
+    token = r.token; localStorage.setItem("token", token); show();
+  } catch (err) { say(err.message); }
+};
+$("reg").onclick = async () => {
+  say();
+  try { await api("/register", "POST", {username: $("u").value, password: $("p").value}); say("Registered. Now log in."); }
+  catch (err) { say(err.message); }
+};
+$("addForm").onsubmit = async e => {
+  e.preventDefault(); say();
+  try {
+    await api("/expenses", "POST", {amount: $("amt").value, category: $("cat").value, note: $("note").value, date: $("date").value});
+    e.target.reset(); load();
+  } catch (err) { say(err.message); }
+};
+$("rows").onclick = async e => {
+  if (e.target.dataset.id) { await api("/expenses/" + e.target.dataset.id, "DELETE"); load(); }
+};
+$("out").onclick = () => { token = null; localStorage.removeItem("token"); show(); };
+show();
+</script>
+</body>
+</html>
